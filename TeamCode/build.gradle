@@ -23,6 +23,13 @@ android {
     }
 }
 
+repositories {
+    maven { url 'https://jitpack.io' }
+    mavenCentral()
+}
+
 dependencies {
     implementation project(':FtcRobotController')
+    implementation 'com.github.FOTMrobotics:TrailBlazer:f49e0cb191'
+    //implementation 'com.github.FOTMrobotics:TrailBlazer:master-SNAPSHOT'
 }
