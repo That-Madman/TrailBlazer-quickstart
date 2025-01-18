@@ -8,27 +8,31 @@ import org.fotmrobotics.trailblazer.Pose2D;
 public class Odometry {
     HardwareMap hardwareMap;
 
+    DriveValues driveValues = new DriveValues();
+
     private SparkFunOTOS OTOS;
-    String deviceName = "otos";
 
     Pose2D currentPos;
-
-    // TODO: Have options listed here
-    //  include units, offsets, and scalars
 
     public Odometry(HardwareMap hardwareMap) {
         this.hardwareMap = hardwareMap;
 
-        SparkFunOTOS sparkFunOTOS = hardwareMap.get(SparkFunOTOS.class, deviceName);
-        OTOS = sparkFunOTOS;
-        OTOS.setLinearUnit(SparkFunOTOS.LinearUnit.INCHES);
-        OTOS.setAngularUnit(SparkFunOTOS.AngularUnit.DEGREES);
-        OTOS.setLinearScalar(1.0d);
-        OTOS.setAngularScalar(1.0d);
-        OTOS.setOffset(new Pose2D(0.0d, -4.0d, 0.0d));
+        OTOS = hardwareMap.get(SparkFunOTOS.class, driveValues.SparkFunOTOS);
+
+        OTOS.setLinearUnit(driveValues.linearUnit);
+
+        OTOS.setLinearScalar(driveValues.linearScalar);
+
+        OTOS.setAngularUnit(driveValues.angularUnit);
+
+        OTOS.setAngularScalar(driveValues.angularScalar);
+
+        Pose2D offset = new Pose2D(2.5,-6.1875,0);
+        OTOS.setOffset(driveValues.offset);
+
         OTOS.calibrateImu();
         OTOS.resetTracking();
-        OTOS.setPosition(new Pose2D(0.0d, 0.0d, 0.0d));
+        OTOS.setPosition(new Pose2D(0, 0, 0));
     }
 
     public void update() {
@@ -40,5 +44,13 @@ public class Odometry {
     public Pose2D getPosition() {
         update();
         return currentPos;
+    }
+
+    public void resetHeading() {
+        OTOS.calibrateImu();
+    }
+
+    public void resetPosition() {
+        OTOS.setPosition(new Pose2D(0, 0, 0));
     }
 }
