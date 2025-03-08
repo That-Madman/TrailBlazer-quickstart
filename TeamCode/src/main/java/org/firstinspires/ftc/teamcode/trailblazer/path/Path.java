@@ -2,8 +2,10 @@ package org.firstinspires.ftc.teamcode.trailblazer.path;
 
 import static org.fotmrobotics.trailblazer.PathKt.driveVector;
 
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+
 import org.firstinspires.ftc.teamcode.trailblazer.drivebase.Drive;
-import org.fotmrobotics.trailblazer.Event;
+import org.fotmrobotics.trailblazer.MathKt;
 import org.fotmrobotics.trailblazer.PIDF;
 import org.fotmrobotics.trailblazer.Pose2D;
 import org.fotmrobotics.trailblazer.Spline;
@@ -11,113 +13,173 @@ import org.fotmrobotics.trailblazer.Vector2D;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
+/**
+ * @author Preston Cokis
+ */
 public class Path {
-    //List<Vector2D> controlPoints = new ArrayList<>();
-    //List<Event> events = new ArrayList<>();
+    // Allows for linear OpMode methods. Important for preventing force stop mode errors.
+    private LinearOpMode opMode = new LinearOpMode() {
+        @Override
+        public void runOpMode() throws InterruptedException {
+
+        }
+    };
+
     Drive drive;
     Spline spline = new Spline();
-    HashMap<Vector2D, ArrayList<Event>> events = new HashMap<>();
-    List<Event> queue = new ArrayList<>();
 
+    // PIDF loop for translating back onto the spline.
     PIDF translationPIDF = new PIDF(0.5, 0, 0, 0);
 
-    int segment = 0;
-    Event.Heading headingType = Event.Heading.FOLLOW;
-
-    boolean running = false;
-
-    public Path(Spline spline, HashMap<Vector2D, ArrayList<Event>> events) {
-        this.spline = spline;
-        this.events = events;
+    enum State {
+        CONTINUE,
+        PAUSE,
+        STOP,
+        HEADING_FOLLOW,
+        HEADING_OFFSET,
+        HEADING_CONSTANT
     }
 
-    public Path(Drive drive, Spline spline) {
+    ArrayList<Event> events = new ArrayList<>();
+    HashMap<Event, EventType> eventType = new HashMap<>();
+
+    enum EventType {
+        SEQUENTIAL,
+        PARALLEL
+    }
+
+    State headingState = State.HEADING_FOLLOW;
+    double headingValue = 0;
+    double headingTarget;
+
+    State pathState = State.CONTINUE;
+    Pose2D targetPose = new Pose2D(0,0,0);
+
+    public Path() {}
+
+    public void finalize(Drive drive, Spline spline) {
         this.drive = drive;
         this.spline = spline;
     }
 
-    // TODO: for actions store them all in a hashmap with each object mapped to the corresponding grid
+    /**
+     * Runs the path.
+     */
     public void run() {
-        //this.segment = 0;
-        headingType = Event.Heading.FOLLOW;
-        double headingTarget = 0;
-        running = true;
-        while (running) {
-            //update();
-            Pose2D pos = drive.odometry.getPosition();
+        // Sets path state to continue.
+        pathState = State.CONTINUE;
 
-            //Vector2D grid = new Vector2D(pos.getX() % 12, pos.getY() % 12);
+        // Creates a copy of the event list.
+        ArrayList<Event> tempEvents = new ArrayList<>(events);
 
-            Pose2D driveVector = driveVector(spline, pos, translationPIDF);
+        // Event queues.
+        ArrayList<Event> sequentialQueue = new ArrayList<>();
+        ArrayList<Event> parallelQueue = new ArrayList<>();
 
-            headingTarget = Math.toDegrees(driveVector.getH()) - 90;
-            //headingTarget = Math.toDegrees(Math.atan2(driveVector.getY(), driveVector.getX()));
-            //headingTarget = headingTarget <= 180 ? headingTarget : headingTarget + 360;
-            //headingTarget -= 90;
-            /*
-            switch(headingType) {
-                case FOLLOW:
-                    headingTarget = Math.toDegrees(Math.atan2(driveVector.getY(), driveVector.getX()));
-                    headingTarget = headingTarget <= 180 ? headingTarget : headingTarget - 360;
-                case CONSTANT:
-                    continue;
-                case OFFSET:
-                    continue;
-            }
-             */
+        while (pathState != State.STOP) {
+            // Prevents force stop mode errors.
+            if (opMode.isStopRequested()) pathState = State.STOP;
 
-            drive.moveVector(driveVector, headingTarget);
+            // Gets the current position.
+            Pose2D pose = drive.odometry.getPosition();
 
-            double t = spline.getClosestPoint(pos);
-            if (t >= 1) {
-                spline.incSegment();
-            } //else if (t <= 0) {
-                //spline.decSegment();
-            //}
+            // Calculates the vector needed for translation.
+            Pose2D driveVector = driveVector(spline, pose, translationPIDF);
 
-            if (spline.getLength() - 1 == spline.getSegment() && t > 0.9) {
-                drive.movePoint(spline.getPt(-1), headingTarget);
-            }
+            // Estimates how far along the segment the robot is.
+            double t = spline.getClosestPoint(pose);
 
-            // Get robot position
-            // Robot position % 12
-            // Look for key in hashmap
-            // Look at event position
-            // If the distance between event and robot is close, add event to queue
-
-            /*
-            for (Event event : events[grid]) {
-                double distance = (event.pos - drive.getPosition()).norm();
-                if (distance < 1) {
-                    queue.add(event);
+            // Initializes the remove list.
+            ArrayList<Event> removeEvents = new ArrayList<>();
+            // Loops through events.
+            for (Event event : tempEvents) {
+                // If the robot is past when it should run, the event gets added to the queue.
+                if (event.getInterpolation() <= t && event.getSegment() == spline.getSegment()) {
+                    // Checks for which queue to add the event to.
+                    switch(eventType.get(event)) {
+                        case PARALLEL:
+                            parallelQueue.add(event);
+                        case SEQUENTIAL:
+                            sequentialQueue.add(event);
+                    }
+                    // Adds the event to the remove list.
+                    removeEvents.add(event);
                 }
             }
+            // Removes all events that have been added to the queue.
+            tempEvents.removeAll(removeEvents);
 
-            for (Event event : queue) {
-                // TODO: Every event must have a runnable and condition (Callable). If there is no condition,
-                //  delete the event from the queue after it is done.
+            // Initializes the remove list.
+            ArrayList<Event> removeQueue = new ArrayList<>();
+            // Loops through the parallel queue.
+            for (Event event : parallelQueue) {
+                // If the boolean returned by the callable is true, the event gets removed.
+                try {
+                    boolean condition = event.call();
+
+                    if (condition) removeQueue.add(event);
+                }
+
+                catch (Exception e) {throw new RuntimeException(e);}
             }
-            */
+            // Removes events that have finished running.
+            parallelQueue.removeAll(removeQueue);
+
+            // Calls the first even in the sequential queue.
+            if (!sequentialQueue.isEmpty()) {
+                // If the boolean returned by the callable is true, the event gets removed.
+                try {
+                    if (sequentialQueue.get(0).call()) {
+                        sequentialQueue.remove(0);
+                    }
+                }
+
+                catch (Exception e) {throw new RuntimeException(e);}
+            }
+
+            // Sets heading target.
+            switch (headingState) {
+                case HEADING_FOLLOW:
+                    headingTarget = MathKt.angleWrap(Math.toDegrees(Math.atan2(driveVector.getY(), driveVector.getX())) - 90);
+                    break;
+                case HEADING_OFFSET:
+                    headingTarget = MathKt.angleWrap(Math.toDegrees(Math.atan2(driveVector.getY(), driveVector.getX())) - 90 + headingValue);
+                    break;
+                case HEADING_CONSTANT:
+                    headingTarget = headingValue;
+                    break;
+            }
+
+            // Sets translational target.
+            switch (pathState) {
+                case CONTINUE:
+                    // Moves the robot.
+                    drive.moveVector(new Pose2D(driveVector.getX(), driveVector.getY(), headingTarget), true);
+
+                    // Sets the target pose to be the current position. This is so the path can be paused at any point.
+                    targetPose.set(new Pose2D(pose.getX(), pose.getY(), headingTarget));
+
+                    // If the path is close to the end, set the target to the end.
+                    if (t > 0.85 && spline.getLength() - 4 == spline.getSegment()) {
+                        pathState = State.PAUSE;
+
+                        Vector2D endPt = spline.getPt(spline.getLength() - 1);
+                        targetPose.set(new Pose2D(endPt.getX(), endPt.getY(), headingTarget));
+                    }
+
+                    // Moves onto the next segment when the current segment has ended.
+                    if (t >= 1) {
+                        spline.incSegment();
+                    }
+
+                    break;
+                case PAUSE:
+                    // Moves the robot to a pose.
+                    drive.movePoint(targetPose);
+
+                    break;
+            }
         }
-    }
-
-    public void update() {
-        //double t = spline.getClosestPoint(drive.getPosition());
-        Pose2D driveVector = driveVector(spline, drive.odometry.getPosition(), translationPIDF);
-
-    }
-
-    public Pose2D test() {
-        return driveVector(spline, drive.odometry.getPosition(), translationPIDF);
-    }
-
-    public void stop() {
-        running = false;
-    }
-
-    public void loop() {
-
     }
 }

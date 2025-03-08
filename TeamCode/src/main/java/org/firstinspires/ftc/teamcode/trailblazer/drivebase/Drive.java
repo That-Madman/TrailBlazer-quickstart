@@ -2,13 +2,13 @@ package org.firstinspires.ftc.teamcode.trailblazer.drivebase;
 
 import static org.fotmrobotics.trailblazer.MathKt.angleWrap;
 
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.teamcode.trailblazer.path.PathBuilder;
-import org.fotmrobotics.trailblazer.MathKt;
 import org.fotmrobotics.trailblazer.PIDF;
 import org.fotmrobotics.trailblazer.Pose2D;
 import org.fotmrobotics.trailblazer.Vector2D;
@@ -16,41 +16,42 @@ import org.fotmrobotics.trailblazer.Vector2D;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Controls the drive base. Currently supports mecanum drive base.
+ *
+ * @author Preston Cokis
+ */
 public class Drive {
     HardwareMap hardwareMap;
     public Odometry odometry;
 
-    /**
-     * 0. Front Left
-     * 1. Front Right
-     * 2. Back Left
-     * 3. Back Right
-     */
-    String[] motorNames = {
-            "frontLeft",
-            "frontRight",
-            "backLeft",
-            "backRight"
-    };
+    DriveValues driveValues = new DriveValues();
 
-    private PIDF positionPID = new PIDF(0.125, 0, 0, 0);
-    private PIDF headingPID = new PIDF(0.01, 0, 0, 0);
+    public double xScale = driveValues.xScale;
+    public double yScale = driveValues.yScale;
+    public double angularScale = driveValues.angularScale;
 
-    //double maxSpeed = 50;
+    private final PIDF positionPID = driveValues.positionPID;
+    private final PIDF headingPID = driveValues.headingPID;
 
     public Drive(HardwareMap hardwareMap) {
         this.hardwareMap = hardwareMap;
 
+        List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule hub : allHubs) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
+        }
+
         odometry = new Odometry(hardwareMap);
 
-        setMotors(motorNames);
+        setMotors(driveValues.motorNames);
 
-        // TODO: Reverse any motors if necessary.
-        motors.get(0).setDirection(DcMotorSimple.Direction.REVERSE);
-        motors.get(2).setDirection(DcMotorSimple.Direction.REVERSE);
+        for (int i : driveValues.reverseMotors) {
+            motors.get(i).setDirection(DcMotorSimple.Direction.REVERSE);
+        }
     }
 
-    private List<DcMotor> motors = new ArrayList();
+    private final List<DcMotor> motors = new ArrayList<>();
     public void setMotors(String[] motorNames) {
         for (int i = 0; i <= 3; i++) {
             motors.add(this.hardwareMap.get(DcMotor.class, motorNames[i]));
@@ -65,103 +66,121 @@ public class Drive {
 
     public double[] getPowers(double x, double y, double r) {
         return new double[] {
-                (y + x + r) * 0.8,
-                (y - x - r) * 0.8,
-                (y - x + r) * 0.8,
-                (y + x - r) * 0.8
+                (y*yScale + x*xScale + r*angularScale),
+                (y*yScale - x*xScale - r*angularScale),
+                (y*yScale - x*xScale + r*angularScale),
+                (y*yScale + x*xScale - r*angularScale)
         };
     }
 
-    public void moveVector(Pose2D pose2D) {
+    public void moveVector(Vector2D v, double r, boolean relative) {
         Pose2D currentPos = odometry.getPosition();
 
-        double angle = Math.toDegrees(Math.atan2(pose2D.getY(), pose2D.getX())) + 90; // Adds 90 bc of how angles are read by sparkfun, maybe change
-        angle = angle <= 180 ? angle : angle - 360;
-        angle -= currentPos.getH();
+        double angle = angleWrap(Math.toDegrees(Math.atan2(v.getY(), v.getX())) + 180);
 
-        double headingError = pose2D.getH() - currentPos.getH();
+        if (relative) {angle -= currentPos.getH();}
+
+        double power = Math.min(v.norm(), 1);
+
+        double x = Math.cos(Math.toRadians(angle)) * power;
+        double y = Math.sin(Math.toRadians(angle)) * power;
+
+        runMotors(getPowers(x, y, r));
+    }
+
+    public void moveVector(Pose2D pose, boolean relative) {
+        Pose2D currentPos = odometry.getPosition();
+
+        double headingError = pose.getH() - currentPos.getH();
         headingError = angleWrap(headingError);
         headingError = headingError > 180 ? headingError - 360 : headingError < -180 ? headingError - 360 : headingError;
 
         double headingOut = headingPID.update(headingError);
 
-        double power = Math.min(pose2D.norm(), 1);
+        double r = Math.min(Math.abs(headingOut),1) * (Math.abs(headingError) / headingError);
 
-        double x = Math.sin(Math.toRadians(angle)) * power;
-        double y = -Math.cos(Math.toRadians(angle)) * power;
-        double r = Math.min(Math.abs(headingOut),1) * (Math.abs(headingError) / -headingError); // * (1 + (Boolean.compare(headingError > 0, false) * -2))
-
-        runMotors(getPowers(x, y, r));
+        moveVector(new Vector2D(pose.getX(), pose.getY()), r, relative);
     }
 
-    public void moveVector(Vector2D v, double angle) {
-        moveVector(new Pose2D(v.getX(), v.getY(), angle));
+    public void moveVector(Pose2D pose) {
+        moveVector(pose, true);
     }
 
-    public void moveVector(Vector2D v) {
-        double angle = odometry.getPosition().getH();
-        moveVector(v, angle);
-    }
-
+    public Pose2D target;
     public void movePoint(Pose2D point) {
+        target = point;
         Pose2D currentPos = odometry.getPosition();
+
         Vector2D difference = point.minus(currentPos);
-        moveVector(difference, point.getH());
+
+        double out = Math.min(positionPID.update(difference.norm()), 1);
+
+        Vector2D result = difference.times(out);
+
+        moveVector(new Pose2D(result.getX(), result.getY(), point.getH()), true);
     }
 
     public void movePoint(Vector2D point, double angle) {
         movePoint(new Pose2D(point.getX(), point.getY(), angle));
     }
 
-    private boolean rotate = false;
+    private int timesChecked = 0;
+    private Pose2D lastPos = new Pose2D(Double.NaN, Double.NaN, Double.NaN);
+    public boolean atTarget() {
+        Pose2D currentPos = odometry.getPosition();
+
+        //double distance = currentPos.minus(target).norm();
+
+        timesChecked = Math.sqrt(
+                Math.pow(currentPos.getX() - lastPos.getX(), 2) +
+                Math.pow(currentPos.getY() - lastPos.getY(), 2)) < 0.05 &&
+                Math.abs(currentPos.getH() - lastPos.getH()) < 0.05 ?
+                timesChecked + 1 : 0;
+        lastPos.set(currentPos);
+        return timesChecked > 2;
+    }
+
+    private boolean rotate = true;
     private double targetDriveHeading = 0;
     public void mecanumDrive (Gamepad gamepad) {
         double x = gamepad.left_stick_x;
         double y = -gamepad.left_stick_y;
         double r = gamepad.right_stick_x;
 
-        /// Kaden's control scheme (except not right, whoops)
-        /// double x = gamepad.left_stick_x;
-        /// double y = -gamepad.right_stick_y;
-        /// double r = gamepad.right_stick_x;
-
         double currentHeading = odometry.getPosition().getH();
 
         if (r != 0) {
-            targetDriveHeading = currentHeading + r * -90;
-            targetDriveHeading = angleWrap(targetDriveHeading);
+            moveVector(new Vector2D(x, y), -r, false);
             rotate = true;
         } else if (rotate) {
             targetDriveHeading = currentHeading;
             rotate = false;
         }
 
-        moveVector(new Pose2D(x, y, targetDriveHeading));
+        if (!rotate) {moveVector(new Pose2D(x, y, targetDriveHeading), false);}
     }
 
     public void trueNorthDrive(Gamepad gamepad) {
-        odometry.update();
-
         double x = gamepad.left_stick_x;
         double y = -gamepad.left_stick_y;
         double r = gamepad.right_stick_x;
 
-        double power = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
+        if (gamepad.right_stick_button) {odometry.resetHeading();}
 
-        double angle = Math.toDegrees(Math.atan2(y, x)) + 90;
-        angle = (angle <= 180 ? angle : angle - 360) - odometry.currentPos.getH();
-        x = Math.sin(Math.toRadians(angle)) * power;
-        y = (-Math.cos(Math.toRadians(angle))) * power;
+        double currentHeading = odometry.getPosition().getH();
 
-        runMotors(new double[] {
-                y + x + r,
-                y - x - r,
-                y - x + r,
-                y + x - r
-        });
+        if (r != 0) {
+            moveVector(new Vector2D(x, y), -r, true);
+            rotate = true;
+        } else if (rotate) {
+            targetDriveHeading = currentHeading;
+            rotate = false;
+        }
+
+        if (!rotate) {moveVector(new Pose2D(x, y, targetDriveHeading));}
     }
 
-    public PathBuilder pathBuilder(Vector2D startPoint) {
+    public PathBuilder PathBuilder(Vector2D startPoint) {
         return new PathBuilder(this, startPoint);
     }
 }

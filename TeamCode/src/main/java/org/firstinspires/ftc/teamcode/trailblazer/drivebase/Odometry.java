@@ -5,40 +5,74 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.fotmrobotics.trailblazer.MathKt;
 import org.fotmrobotics.trailblazer.Pose2D;
 
+/**
+ * Controls the odometry. Currently supports the SparkFunOTOS.
+ * To change the odometry method, change the methods corresponding to what they do.
+ *
+ * @author Preston Cokis
+ */
 public class Odometry {
     HardwareMap hardwareMap;
 
+    DriveValues driveValues = new DriveValues();
+
     private SparkFunOTOS OTOS;
-    String deviceName = "otos";
 
     Pose2D currentPos;
-
-    // TODO: Have options listed here
-    //  include units, offsets, and scalars
+    Pose2D lastPos;
 
     public Odometry(HardwareMap hardwareMap) {
         this.hardwareMap = hardwareMap;
 
-        SparkFunOTOS sparkFunOTOS = hardwareMap.get(SparkFunOTOS.class, deviceName);
-        OTOS = sparkFunOTOS;
-        OTOS.setLinearUnit(SparkFunOTOS.LinearUnit.INCHES);
-        OTOS.setAngularUnit(SparkFunOTOS.AngularUnit.DEGREES);
-        OTOS.setLinearScalar(1.0d);
-        OTOS.setAngularScalar(1.0d);
-        OTOS.setOffset(new Pose2D(0.0d, -4.0d, 0.0d));
+        OTOS = hardwareMap.get(SparkFunOTOS.class, driveValues.SparkFunOTOS);
+
+        OTOS.setLinearUnit(driveValues.linearUnit);
+
+        OTOS.setLinearScalar(driveValues.linearScalar);
+
+        OTOS.setAngularUnit(driveValues.angularUnit);
+
+        OTOS.setAngularScalar(driveValues.angularScalar);
+
+        OTOS.setOffset(driveValues.offset);
+
         OTOS.calibrateImu();
         OTOS.resetTracking();
-        OTOS.setPosition(new Pose2D(0.0d, 0.0d, 0.0d));
+        OTOS.setPosition(new Pose2D(0, 0, 0));
     }
 
+    /**
+     * Updates the position values.
+     */
     public void update() {
+        lastPos = currentPos;
+
         Pose2D pos = OTOS.getPosition();
         pos.setH(MathKt.angleWrap(pos.getH()));
+
         currentPos = pos;
     }
 
     public Pose2D getPosition() {
         update();
         return currentPos;
+    }
+
+    public Pose2D getLastPosition() {
+        return lastPos;
+    }
+
+    /**
+     * Resets the heading.
+     */
+    public void resetHeading() {
+        OTOS.calibrateImu();
+    }
+
+    /**
+     * Resets the position.
+     */
+    public void resetPosition() {
+        OTOS.setPosition(new Pose2D(0, 0, 0));
     }
 }
