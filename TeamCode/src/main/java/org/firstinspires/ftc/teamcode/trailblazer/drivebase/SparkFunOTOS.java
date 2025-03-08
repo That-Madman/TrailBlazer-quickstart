@@ -5,6 +5,9 @@
 */
 package org.firstinspires.ftc.teamcode.trailblazer.drivebase;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
 import com.qualcomm.robotcore.hardware.I2cAddr;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynchDevice;
@@ -14,9 +17,6 @@ import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.fotmrobotics.trailblazer.Pose2D;
-
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 
 /**
  * Wrapper for {@link com.qualcomm.hardware.sparkfun.SparkFunOTOS} that supports {@link Pose2D} from
