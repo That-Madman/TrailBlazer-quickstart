@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import org.firstinspires.ftc.teamcode.trailblazer.drivebase.Odometry;
 import org.fotmrobotics.trailblazer.Pose2D;
 
-@TeleOp
+@TeleOp (group = "Trailblazer_OpModes")
 public class OTOS_tuning extends LinearOpMode {
 
     public void runOpMode() throws InterruptedException {
