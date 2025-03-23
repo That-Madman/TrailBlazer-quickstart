@@ -66,10 +66,10 @@ public class Drive {
 
     public double[] getPowers(double x, double y, double r) {
         return new double[] {
-                (y*yScale + x*xScale + r*angularScale),
-                (y*yScale - x*xScale - r*angularScale),
-                (y*yScale - x*xScale + r*angularScale),
-                (y*yScale + x*xScale - r*angularScale)
+                (y * yScale + x * xScale + r * angularScale),
+                (y * yScale - x * xScale - r * angularScale),
+                (y * yScale - x * xScale + r * angularScale),
+                (y * yScale + x * xScale - r * angularScale)
         };
     }
 
@@ -93,11 +93,12 @@ public class Drive {
 
         double headingError = pose.getH() - currentPos.getH();
         headingError = angleWrap(headingError);
-        headingError = headingError > 180 ? headingError - 360 : headingError < -180 ? headingError - 360 : headingError;
+        headingError = (headingError > 180) ? headingError - 360 :
+                (headingError < -180) ? headingError - 360 : headingError;
 
         double headingOut = headingPID.update(headingError);
 
-        double r = Math.min(Math.abs(headingOut),1) * (Math.abs(headingError) / headingError);
+        double r = Math.min(Math.abs(headingOut), 1) * (Math.abs(headingError) / headingError);
 
         moveVector(new Vector2D(pose.getX(), pose.getY()), r, relative);
     }
@@ -128,8 +129,6 @@ public class Drive {
     private Pose2D lastPos = new Pose2D(Double.NaN, Double.NaN, Double.NaN);
     public boolean atTarget() {
         Pose2D currentPos = odometry.getPosition();
-
-        //double distance = currentPos.minus(target).norm();
 
         timesChecked = Math.sqrt(
                 Math.pow(currentPos.getX() - lastPos.getX(), 2) +
