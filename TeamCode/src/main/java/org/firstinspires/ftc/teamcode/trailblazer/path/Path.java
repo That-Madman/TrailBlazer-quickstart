@@ -44,7 +44,7 @@ public class Path {
     ArrayList<Event> events = new ArrayList<>();
     HashMap<Event, EventType> eventType = new HashMap<>();
 
-    enum EventType {
+    public enum EventType {
         SEQUENTIAL,
         PARALLEL
     }
