@@ -67,6 +67,9 @@ public class Path {
      * Runs the path.
      */
     public void run() {
+        // Resets segment to 0
+        this.spline.setSegment(0);
+        
         // Sets path state to continue.
         pathState = State.CONTINUE;
 
