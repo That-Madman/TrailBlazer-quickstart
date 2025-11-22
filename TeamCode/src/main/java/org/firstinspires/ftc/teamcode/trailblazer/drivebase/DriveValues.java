@@ -26,11 +26,7 @@ public class DriveValues {
     };
 
     // TODO: Reverse motors if necessary.
-    int[] reverseMotors = {
-            1,
-            2,
-            3
-    };
+    int[] reverseMotors = {};
 
     GoBildaPinpointDriver.EncoderDirection[]  odoDir = {
             GoBildaPinpointDriver.EncoderDirection.REVERSED,
