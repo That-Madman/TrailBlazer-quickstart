@@ -1,44 +1,36 @@
+
 package org.firstinspires.ftc.teamcode.trailblazer.drivebase;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.fotmrobotics.trailblazer.MathKt;
 import org.fotmrobotics.trailblazer.Pose2D;
 
 /**
- * Controls the odometry. Currently supports the SparkFunOTOS.
+ * Controls the odometry. Currently supports the SparkFunOTOS and Gobuilda Odom Computers.
  * To change the odometry method, change the methods corresponding to what they do.
  *
  * @author Preston Cokis
  */
 public class Odometry {
-    HardwareMap hardwareMap;
-
     DriveValues driveValues = new DriveValues();
 
-    private SparkFunOTOS OTOS;
+    private GoBildaPinpointDriver odo;
 
     Pose2D currentPos;
     Pose2D lastPos;
 
     public Odometry(HardwareMap hardwareMap) {
-        this.hardwareMap = hardwareMap;
+        odo = hardwareMap.get(GoBildaPinpointDriver.class, "odo");
 
-        OTOS = hardwareMap.get(SparkFunOTOS.class, driveValues.SparkFunOTOS);
+        odo.setOffsets(driveValues.offset.getX(),driveValues.offset.getY(), driveValues.offsetUnit);
 
-        OTOS.setLinearUnit(driveValues.linearUnit);
+        odo.setEncoderDirections(driveValues.odoDir[0], driveValues.odoDir[1]);
 
-        OTOS.setLinearScalar(driveValues.linearScalar);
+        odo.setEncoderResolution(driveValues.podType);
 
-        OTOS.setAngularUnit(driveValues.angularUnit);
-
-        OTOS.setAngularScalar(driveValues.angularScalar);
-
-        OTOS.setOffset(driveValues.offset);
-
-        OTOS.calibrateImu();
-        OTOS.resetTracking();
-        OTOS.setPosition(new Pose2D(0, 0, 0));
+        odo.resetPosAndIMU();
     }
 
     /**
@@ -46,8 +38,9 @@ public class Odometry {
      */
     public void update() {
         lastPos = currentPos;
+        odo.update();
 
-        Pose2D pos = OTOS.getPosition();
+        Pose2D pos = odo.getPosition(driveValues.linearUnit, driveValues.angularUnit);
         pos.setH(MathKt.angleWrap(pos.getH()));
 
         currentPos = pos;
@@ -66,13 +59,13 @@ public class Odometry {
      * Resets the heading.
      */
     public void resetHeading() {
-        OTOS.calibrateImu();
+        odo.setHeading(0, AngleUnit.DEGREES);
     }
 
     /**
      * Resets the position.
      */
     public void resetPosition() {
-        OTOS.setPosition(new Pose2D(0, 0, 0));
+        odo.resetPosAndIMU();
     }
 }
